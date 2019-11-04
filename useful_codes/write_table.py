@@ -5,24 +5,67 @@ Some utils for write dataframe in hive tables
 """
 
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 
 
 class WriteTable:
 
-    def __init__(self):
-        self._spark = SparkSession.builder.getOrCreate()
+    def __init__(self, df, tableName):
 
-    def byNameOfColumns(self, df, tableName, overwrite=False):
+        self._spark = SparkSession.builder.getOrCreate()
+        self._df = df
+        self._tableName = tableName
+
+    def byNameOfColumns(self):
         """
-        Write in Hive Tables by name of the columns (not positional)
-        :param df:
-        :param tableName:
+        order the columns in datafrmae
+        :return: self
+        """
+        orderOfColumns = [column.name for column in self._spark.catalog.listColumns(self._tableName)]
+
+        self._df = self._df.select(*orderOfColumns)
+
+        return self
+
+    def checkingNullValues(self, columns=None, tolerance=0):
+        """
+        Checking null values in columns
+        :param columns: columns to check for null values
+        :param tolerance: 0 = Error, 1 = Warn
         :return:
         """
 
-        orderOfColumns = [column.name for column in self._spark.catalog.listColumns(tableName)]
+        if tolerance not in (0, 1):
+            raise ValueError("Tolerance '{0}' must be 0 or 1.".format(str(tolerance)))
 
-        df.select(*orderOfColumns).write.insertInto(tableName, overwrite)
+        if columns is None:
+            columns = self._df.columns
+
+        if isinstance(columns, str):
+            columns = [columns]
+
+        for column in columns:
+
+            if self._df.filter(col(column).isNull()).first() is not None:
+
+                log_msg = "DataFrame contains Null values in column {0}".format(column)
+
+                if tolerance == 0:
+                    raise AssertionError(log_msg)
+
+                if tolerance == 1:
+                    print(log_msg)
+
+        return self
+
+    def write(self, overwrite=False):
+        """
+
+        :param overwrite:
+        :return:
+        """
+
+        self._df.write.insertInto(self._tableName, overwrite)
 
         return None
 
@@ -53,9 +96,15 @@ def _test():
     spark.table(tableName).show(truncate=False)
 
     print("Inserting by name of columns (using byNameOfColumns)")
-    WriteTable().byNameOfColumns(df2, tableName, overwrite=True)
+    WriteTable(df2, tableName).byNameOfColumns().write(overwrite=True)
 
     spark.table(tableName).show(truncate=False)
+
+    print("Validating null values")
+    df3 = spark.range(20).selectExpr('Null as dummy1',
+                                     '"dummy2" as dummy2',
+                                     'id as id1')
+    WriteTable(df3, tableName).byNameOfColumns().checkingNullValues(tolerance=1).write(overwrite=True)
 
 
 if __name__ == "__main__":
