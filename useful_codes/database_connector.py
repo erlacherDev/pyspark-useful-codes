@@ -8,11 +8,11 @@ import pyodbc
 from pyspark.sql import SparkSession, DataFrame
 
 
-def jdbc_connector(url=None, database=None, user=None, password=None, driver=None):
-    return JDBCDatabaseConnector(url, database, user, password, driver)
+def database_connector(url=None, database=None, user=None, password=None, driver=None):
+    return DatabaseConnector(url, database, user, password, driver)
 
 
-class JDBCDatabaseConnector:
+class DatabaseConnector:
 
     def __init__(self, url=None, database=None, user=None, password=None, driver=None):
         self.url = url
@@ -21,8 +21,8 @@ class JDBCDatabaseConnector:
         self.password = password
         self.driver = driver
 
-    def readTable(self, spark: SparkSession, tableName: str, url=None, database=None,
-                  user=None, password=None, driver=None) -> DataFrame:
+    def read(self, spark: SparkSession, tableName: str, url=None, database=None,
+             user=None, password=None, driver=None) -> DataFrame:
 
         database, driver, password, url, user = self._get_attributes(database, driver, password, url, user)
 
@@ -51,8 +51,8 @@ class JDBCDatabaseConnector:
 
         return None
 
-    def queryString(self, spark: SparkSession, query: str, url=None, user=None,
-                    password=None, driver=None) -> DataFrame:
+    def readQuery(self, spark: SparkSession, query: str, url=None, user=None,
+                  password=None, driver=None) -> DataFrame:
 
         if url is None:
             url = self.url
