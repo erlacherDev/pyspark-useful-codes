@@ -8,10 +8,6 @@ import pyodbc
 from pyspark.sql import SparkSession, DataFrame
 
 
-def database_connector(url=None, database=None, user=None, password=None, driver=None):
-    return DatabaseConnector(url, database, user, password, driver)
-
-
 class DatabaseConnector:
 
     def __init__(self, url=None, database=None, user=None, password=None, driver=None):
@@ -24,7 +20,7 @@ class DatabaseConnector:
     def read(self, spark: SparkSession, tableName: str, url=None, database=None,
              user=None, password=None, driver=None) -> DataFrame:
 
-        database, driver, password, url, user = self._get_attributes(database, driver, password, url, user)
+        url, database, user, password, driver = self._get_attributes(url, database, user, password, driver)
 
         return spark.read \
             .format("jdbc") \
@@ -38,7 +34,7 @@ class DatabaseConnector:
     def write(self, df: DataFrame, tableName: str, url=None, database=None,
               user=None, password=None, driver=None) -> None:
 
-        database, driver, password, url, user = self._get_attributes(database, driver, password, url, user)
+        url, database, user, password, driver = self._get_attributes(url, database, user, password, driver)
 
         df.write \
             .format("jdbc") \
@@ -51,20 +47,10 @@ class DatabaseConnector:
 
         return None
 
-    def readQuery(self, spark: SparkSession, query: str, url=None, user=None,
-                  password=None, driver=None) -> DataFrame:
+    def readQuery(self, spark: SparkSession, query: str, url=None, database=None,
+                  user=None, password=None, driver=None) -> DataFrame:
 
-        if url is None:
-            url = self.url
-
-        if user is None:
-            user = self.user
-
-        if password is None:
-            password = self.password
-
-        if driver is None:
-            driver = self.driver
+        url, database, user, password, driver = self._get_attributes(url, database, user, password, driver)
 
         return spark.read \
             .format("jdbc") \
@@ -75,14 +61,18 @@ class DatabaseConnector:
             .option("driver", driver) \
             .load()
 
-    def executeProcedure(self, procedureName: str) -> None:
+    def executeProcedure(self, procedureName: str, url=None, database=None,
+                         user=None, password=None, driver=None) -> None:
+
+        url, database, user, password, driver = self._get_attributes(url, database, user, password, driver)
+
         cnxn = pyodbc.connect(
-            f"DRIVER={self.driver};"
-            f"SERVER={self.url};"
+            f"DRIVER={driver};"
+            f"SERVER={url};"
             f"PORT=1433;"
-            f"DATABASE={self.database};"
-            f"UID={self.user};"
-            f"PWD={self.password}")
+            f"DATABASE={database};"
+            f"UID={user};"
+            f"PWD={password}")
 
         cursor = cnxn.cursor()
 
@@ -95,48 +85,51 @@ class DatabaseConnector:
         return None
 
     @classmethod
-    def oracle(cls, url, database, user, password):
+    def oracle(cls, url=None, database=None, user=None, password=None):
         return cls(url, database, user, password, "oracle.jdbc.driver.OracleDriver")
 
     @classmethod
-    def azure_sql(cls, url, database, user, password):
+    def azure_sql(cls, url=None, database=None, user=None, password=None):
         return cls(url, database, user, password, "com.microsoft.sqlserver.jdbc.SQLServerDriver")
 
-    def _get_attributes(self, database, driver, password, url, user):
+    def _get_attributes(self, url, database, user, password, driver):
 
         if url is None:
 
             if self.url is None:
-                raise ValueError(f"{self.url} nao pode ser Nulo.")
+                raise ValueError("Parametro 'url' nao pode ser Nulo.")
 
             url = self.url
 
         if database is None:
 
             if self.database is None:
-                raise ValueError(f"{self.database} nao pode ser Nulo.")
+                raise ValueError("Parametro 'database' nao pode ser Nulo.")
 
             database = self.database
 
         if user is None:
 
             if self.user is None:
-                raise ValueError(f"{self.user} nao pode ser Nulo.")
+                raise ValueError("Parametro 'user' nao pode ser Nulo.")
 
             user = self.user
 
         if password is None:
 
             if self.password is None:
-                raise ValueError(f"{self.password} nao pode ser Nulo.")
+                raise ValueError("Parametro 'password' nao pode ser Nulo.")
 
             password = self.password
 
         if driver is None:
 
             if self.driver is None:
-                raise ValueError(f"{self.driver} nao pode ser Nulo.")
+                raise ValueError("Parametro 'driver' nao pode ser Nulo.")
 
             driver = self.driver
 
-        return database, driver, password, url, user
+        return url, database, user, password, driver
+
+
+database_connector = DatabaseConnector(None, None, None, None, None)
