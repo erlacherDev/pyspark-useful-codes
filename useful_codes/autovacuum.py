@@ -1,8 +1,3 @@
-"""
-UNDER CONSTRUCTION
-"""
-
-
 from pyspark.sql import SparkSession, DataFrame
 
 
@@ -11,20 +6,44 @@ class AutoVacuum:
     def __init__(self, spark: SparkSession):
         self.spark = spark
         self.control_tablename = "default._delta_vacuum_control"
+        self.DEFAULT_RETENTATION = 168
 
-    def run(self, tables=None) -> None:
+    def run(self, delta_tables=None, debug=True) -> None:
 
-        if tables is None:
-            tables = self.get_tables()
+        if delta_tables is None:
+            delta_tables = self.get_delta_tables()
 
-        if isinstance(tables, str):
-            tables = [tables]
+        if isinstance(delta_tables, str):
+            delta_tables = [delta_tables]
 
-        control_table_dict = {x.table_name: x.retantion_hours for x in self.get_control_table().collect()}
+        control_table_dict = {x.table_name: x.retantion_hours for x in self.control_table.collect()}
 
-        for table in tables:
-            self.spark.sql(f"VACUUM {table} RETAIN {control_table_dict[table]} HOURS")
-            print(f"VACUUM EXECUTED FOR TABLE {table} WITH RETAIN OF {control_table_dict[table]} HOURS")
+        if debug:
+            print("Tabelas deltas encontradas no Workspace: \n", delta_tables)
+            print("\n--------------------\n")
+            print("Tabelas encontradas na tabela de controle com suas respectivas retencoes:\n", control_table_dict)
+            print("\n--------------------\n")
+
+        for delta_table in delta_tables:
+
+            if delta_table not in control_table_dict:
+
+                if debug:
+                    print(f"Tabela {delta_table} nao encontrada na tabela controle. Adicionando com retencao default"
+                          f" ({str(self.DEFAULT_RETENTATION)})")
+
+                self.update_control_table(delta_table, self.DEFAULT_RETENTATION, debug=False)
+                control_table_dict[delta_table] = self.DEFAULT_RETENTATION
+
+            if debug:
+                print(f"EXECUTANDO VACUUM PARA A TABELA {delta_table}"
+                      f" COM RETATION DE {str(control_table_dict[delta_table])} HORAS")
+
+            self.spark.sql(f"VACUUM {delta_table} RETAIN {control_table_dict[delta_table]} HOURS")
+
+            if debug:
+                print("VACUUM EXECUTADO COM SUCESSO")
+                print("\n--------------------\n")
 
         return None
 
@@ -74,7 +93,8 @@ class AutoVacuum:
 
         return None
 
-    def get_control_table(self) -> DataFrame:
+    @property
+    def control_table(self) -> DataFrame:
         return self.spark.table(self.control_tablename)
 
     def get_databases(self) -> list:
@@ -112,7 +132,7 @@ class AutoVacuum:
 
         return delta_tables
 
-    def _create_control_table(self, debug=False) -> None:
+    def create_control_table(self, debug=False) -> None:
 
         self.spark.sql(f"""
             CREATE TABLE IF NOT EXISTS {self.control_tablename} (
