@@ -3,9 +3,9 @@ from pyspark.sql import SparkSession, DataFrame
 
 class AutoVacuum:
 
-    def __init__(self, spark: SparkSession):
-        self.spark = spark
-        self.control_tablename = "default._delta_vacuum_control"
+    def __init__(self, spark: SparkSession, control_tablename: str = "default._delta_vacuum_control"):
+        self._spark = spark
+        self.control_tablename = control_tablename
         self.DEFAULT_RETENTATION = 168
 
     def run(self, delta_tables=None, debug=True) -> None:
@@ -39,7 +39,7 @@ class AutoVacuum:
                 print(f"EXECUTANDO VACUUM PARA A TABELA {delta_table}"
                       f" COM RETATION DE {str(control_table_dict[delta_table])} HORAS")
 
-            self.spark.sql(f"VACUUM {delta_table} RETAIN {control_table_dict[delta_table]} HOURS")
+            self._spark.sql(f"VACUUM {delta_table} RETAIN {control_table_dict[delta_table]} HOURS")
 
             if debug:
                 print("VACUUM EXECUTADO COM SUCESSO")
@@ -54,19 +54,19 @@ class AutoVacuum:
         if debug:
             print(f"deleteString: {deleteString}")
 
-        self.spark.sql(deleteString)
+        self._spark.sql(deleteString)
 
     def update_control_table(self, table_name: str, retantion_hours: int, debug=True) -> None:
 
-        self.spark.range(1).selectExpr(
+        self._spark.range(1).selectExpr(
             f"'{table_name}' as table_name",
             f"'{retantion_hours}' as retantion_hours",
             f"current_timestamp() as last_updated"
         ).registerTempTable("__builded_temp_df__")
 
-        default_value_crossjoin = self.spark.conf.get('spark.sql.crossJoin.enabled')
+        default_value_crossjoin = self._spark.conf.get('spark.sql.crossJoin.enabled')
 
-        self.spark.conf.set('spark.sql.crossJoin.enabled', 'true')
+        self._spark.conf.set('spark.sql.crossJoin.enabled', 'true')
 
         mergeString = f"""
 
@@ -87,18 +87,18 @@ class AutoVacuum:
         if debug:
             print(f"mergeString: {mergeString}")
 
-        self.spark.sql(mergeString)
+        self._spark.sql(mergeString)
 
-        self.spark.conf.set('spark.sql.crossJoin.enabled', default_value_crossjoin)
+        self._spark.conf.set('spark.sql.crossJoin.enabled', default_value_crossjoin)
 
         return None
 
     @property
     def control_table(self) -> DataFrame:
-        return self.spark.table(self.control_tablename)
+        return self._spark.table(self.control_tablename)
 
     def get_databases(self) -> list:
-        return [x.databaseName for x in self.spark.sql("SHOW DATABASES").collect()]
+        return [x.databaseName for x in self._spark.sql("SHOW DATABASES").collect()]
 
     def get_tables(self, database: str = None) -> list:
 
@@ -109,9 +109,9 @@ class AutoVacuum:
 
         tables_list = []
         for database in databases:
-            self.spark.sql("USE " + database)
+            self._spark.sql("USE " + database)
             tables_list += [x.database + '.' + x.tableName for x in
-                            self.spark.sql("SHOW TABLES").filter('isTemporary == false').collect()]
+                            self._spark.sql("SHOW TABLES").filter('isTemporary == false').collect()]
 
         return tables_list
 
@@ -124,7 +124,7 @@ class AutoVacuum:
 
         for table in tables:
 
-            showcreate_string = self.spark.sql(f"SHOW CREATE TABLE {table}").first()[0]
+            showcreate_string = self._spark.sql(f"SHOW CREATE TABLE {table}").first()[0]
 
             if "USING delta" in showcreate_string:
 
@@ -134,7 +134,7 @@ class AutoVacuum:
 
     def create_control_table(self, debug=False) -> None:
 
-        self.spark.sql(f"""
+        self._spark.sql(f"""
             CREATE TABLE IF NOT EXISTS {self.control_tablename} (
             table_name string,
             retantion_hours int,
