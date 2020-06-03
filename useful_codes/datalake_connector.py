@@ -5,12 +5,28 @@ from pyspark.sql.streaming import StreamingQuery
 
 class DatalakeConnector:
 
+    ABFS_PATH_GOLD = "abfss://datalake-gold@storagetesterchlo.dfs.core.windows.net"
+    ABFS_PATH_SILVER = "abfss://datalake-silver@storagetesterchlo.dfs.core.windows.net"
+    STORAGE_ACCOUNT = "storagetesterchlo"
+    STORAGE_ACCOUNT_KEY = dbutils.secrets.get("azure-keyvault", "storageAccountKey")
+
     def __init__(self, spark: SparkSession):
         self._spark = spark
         self._INPUT_COLUMN_NAME = "__INPUT_FILE_NAME__"
         self._TIMESTAMP_COLUMN_NAME = '__TIMESTAMP__'
-        self._ABFS_PATH_SILVER = "<ABFS_SILVER>"
-        self._ABFS_PATH_GOLD = "<ABFS_GOLD>"
+        self._ABFS_PATH_SILVER = DatalakeConnector.ABFS_PATH_SILVER
+        self._ABFS_PATH_GOLD = DatalakeConnector.ABFS_PATH_GOLD
+        self._STORAGE_ACCOUNT = DatalakeConnector.STORAGE_ACCOUNT
+        self._STORAGE_ACCOUNT_KEY = DatalakeConnector.STORAGE_ACCOUNT_KEY
+        self._set_storage_account_conf_set()
+
+    def _set_storage_account_conf_set(self):
+
+        self._spark.conf.set(
+            f"fs.azure.account.key.{self._STORAGE_ACCOUNT}.dfs.core.windows.net", self._STORAGE_ACCOUNT_KEY
+        )
+
+        return None
 
     def _dataframe_reader(self,
                           camada: str,
@@ -19,15 +35,10 @@ class DatalakeConnector:
                           extra_options: dict,
                           schema,
                           isStreaming: bool,
-                          lote: dict,
-                          debug=True) -> DataFrame:
+                          lote: dict
+                          ) -> DataFrame:
 
         datalake_path = self._get_datalake_path(camada, path)
-
-        if debug:
-            print("---------------------")
-            print("Diretorio de leitura:", datalake_path)
-            print("---------------------")
 
         if isStreaming:
 
@@ -53,7 +64,7 @@ class DatalakeConnector:
 
         return df
 
-    def _get_datalake_path(self, camada, path) -> str:
+    def _get_datalake_path(self, camada, path, debug=True) -> str:
         if camada.lower() == 'silver':
             ABFS_PREFIX = self._ABFS_PATH_SILVER
         elif camada.lower() == 'gold':
@@ -65,6 +76,11 @@ class DatalakeConnector:
             datalake_path = f"{ABFS_PREFIX}/{path}"
         else:
             datalake_path = ",".join([f"{ABFS_PREFIX}/{x}" for x in path])
+
+        if debug:
+            print("---------------------")
+            print("Datalake Path:", datalake_path)
+            print("---------------------")
 
         return datalake_path
 
@@ -133,10 +149,6 @@ class DatalakeConnector:
 
         datalake_path = self._get_datalake_path(camada, path)
 
-        print("---------------------")
-        print("Diretorio de gravacao:", datalake_path)
-        print("---------------------")
-
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
         dataframeWritter = dataframe.write.format(format_file).options(**extra_options)
@@ -171,10 +183,6 @@ class DatalakeConnector:
                     ) -> StreamingQuery:
 
         datalake_path = self._get_datalake_path(camada, path)
-
-        print("---------------------")
-        print("Diretorio de gravacao:", datalake_path)
-        print("---------------------")
 
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
