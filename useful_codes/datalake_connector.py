@@ -1,7 +1,3 @@
-"""
-UNDER CONSTRUCTION
-"""
-
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import current_timestamp, lit, input_file_name
 from pyspark.sql.streaming import StreamingQuery
@@ -16,8 +12,6 @@ class DatalakeConnector:
         self._ABFS_PATH_SILVER = "<ABFS_SILVER>"
         self._ABFS_PATH_GOLD = "<ABFS_GOLD>"
 
-        # CRIAR TODA A PARTE DE CONEXAO PRESENTE NO NOTEBOOK DATALAKECONNECTOR
-
     def _dataframe_reader(self,
                           camada: str,
                           path,
@@ -25,9 +19,15 @@ class DatalakeConnector:
                           extra_options: dict,
                           schema,
                           isStreaming: bool,
-                          lote: dict) -> DataFrame:
+                          lote: dict,
+                          debug=True) -> DataFrame:
 
         datalake_path = self._get_datalake_path(camada, path)
+
+        if debug:
+            print("---------------------")
+            print("Diretorio de leitura:", datalake_path)
+            print("---------------------")
 
         if isStreaming:
 
@@ -39,7 +39,10 @@ class DatalakeConnector:
         else:
             dfReader = self._spark.read
 
-        dfReader = dfReader.format(format_file).schema(schema).option("basePath", path).options(**extra_options)
+        if schema is not None:
+            dfReader = dfReader.schema(schema)
+
+        dfReader = dfReader.format(format_file).options(**extra_options)
 
         df = dfReader.load(datalake_path) \
             .withColumn(self._INPUT_COLUMN_NAME, input_file_name()) \
@@ -59,11 +62,11 @@ class DatalakeConnector:
             raise ValueError(
                 f"Valor invalido '{camada}' para o parametro 'camada' Valores suportados: ['silver', 'gold'])")
         if isinstance(path, str):
-            path = f"{ABFS_PREFIX}/{path}"
+            datalake_path = f"{ABFS_PREFIX}/{path}"
         else:
-            path = ",".join([f"{ABFS_PREFIX}/{x}" for x in path])
+            datalake_path = ",".join([f"{ABFS_PREFIX}/{x}" for x in path])
 
-        return path
+        return datalake_path
 
     def read(self,
              camada: str,
@@ -130,6 +133,10 @@ class DatalakeConnector:
 
         datalake_path = self._get_datalake_path(camada, path)
 
+        print("---------------------")
+        print("Diretorio de gravacao:", datalake_path)
+        print("---------------------")
+
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
         dataframeWritter = dataframe.write.format(format_file).options(**extra_options)
@@ -164,6 +171,10 @@ class DatalakeConnector:
                     ) -> StreamingQuery:
 
         datalake_path = self._get_datalake_path(camada, path)
+
+        print("---------------------")
+        print("Diretorio de gravacao:", datalake_path)
+        print("---------------------")
 
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
