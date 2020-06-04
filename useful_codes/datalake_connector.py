@@ -53,7 +53,10 @@ class DatalakeConnector:
         if schema is not None:
             dfReader = dfReader.schema(schema)
 
-        dfReader = dfReader.format(format_file).options(**extra_options)
+        dfReader = dfReader.format(format_file) #.options(**extra_options)
+
+        if len(extra_options) > 0:
+            print("extra_options:", extra_options)
 
         df = dfReader.load(datalake_path) \
             .withColumn(self._INPUT_COLUMN_NAME, input_file_name()) \
@@ -116,8 +119,6 @@ class DatalakeConnector:
         lote = lote if lote is not None else {}
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
-        self._build_extra_options(extra_options, header, multiLine, sep)
-
         return self._dataframe_reader(camada, path, format_file, extra_options, schema, True, lote)
 
     @staticmethod
@@ -173,7 +174,7 @@ class DatalakeConnector:
                     checkpointLocation: str,
                     triggerOnce: bool = None,
                     triggerProcessingTime: str = None,
-                    triggerContinuous: bool = None,
+                    triggerContinuous: str = None,
                     output_mode: str = "append",
                     partitionBy=None,
                     sep: str = None,
@@ -183,6 +184,7 @@ class DatalakeConnector:
                     ) -> StreamingQuery:
 
         datalake_path = self._get_datalake_path(camada, path)
+        datalake_checkpointLocation = self._get_datalake_path(camada, checkpointLocation, debug=False)
 
         extra_options = self._build_extra_options(extra_options, header, multiLine, sep)
 
@@ -213,7 +215,10 @@ class DatalakeConnector:
             else:
                 dataframeWritter = dataframeWritter.partitionBy(*partitionBy)
 
-        return dataframeWritter.option("checkpointLocation", checkpointLocation) \
+        print(f"Starting streaming with checkpoint location: {datalake_checkpointLocation}")
+        print("---------------------")
+
+        return dataframeWritter.option("checkpointLocation", datalake_checkpointLocation) \
             .outputMode(output_mode) \
             .option("path", datalake_path) \
             .start()
