@@ -48,7 +48,6 @@ class DeltaSCD:
 
         return None
 
-
     def run_type_2(self, spark, dataframe, key, delta_path=None, delta_table=None, current_flag=None,
                    effective_date=None, end_date=None, debug=False):
 
