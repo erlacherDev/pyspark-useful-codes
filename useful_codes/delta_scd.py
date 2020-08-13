@@ -1,20 +1,20 @@
 from delta.tables import DeltaTable
+from pyspark.sql.functions import lit, current_timestamp
+from pyspark.sql.types import TimestampType
+
+
+def apply_scd(spark, scd_type, dataframe, key, current_flag=None, effective_date=None, end_date=None, delta_path=None, delta_table=None, debug=False):
+  return DeltaSCD().run(spark, scd_type, dataframe, key, current_flag, effective_date, end_date, delta_path, delta_table, debug)
 
 
 class DeltaSCD:
-
-    def __init__(self):
-        self.current_flag = "current"
-        self.effective_date = "effectiveDate"
-        self.end_date = "endDate"
 
     class DataFrameAlias:
         DELTA = "DF_DELTA"
         UPDATE = "DF_UPDATE"
         STAGED_UPDATE = "STAGED_UPDATES"
 
-    def run(self, spark, scd_type, dataframe, key, delta_path=None, delta_table=None,
-            current_flag=None, effective_date=None, end_date=None, debug=False):
+    def run(self, spark, scd_type, dataframe, key, current_flag=None, effective_date=None, end_date=None, delta_path=None, delta_table=None, debug=False):
 
         if not isinstance(scd_type, int):
             raise TypeError(f"parametro scd_type precisa ser um inteiro. tipagem recebida: {type(scd_type)}")
@@ -25,40 +25,23 @@ class DeltaSCD:
             self.run_type_1(spark, dataframe, key, delta_path, delta_table, debug)
 
         elif scd_type == 2:
-            self.run_type_2(spark, dataframe, key, delta_path, delta_table, current_flag, effective_date, end_date, debug)
+            self.run_type_2(spark, dataframe, key, current_flag, effective_date, end_date, delta_path, delta_table, debug)
 
         else:
             raise NotImplementedError(f"scd_type '{str(scd_type)}' nao implementado.")
 
         return None
 
-    def run_type_1(self, spark, dataframe, key, delta_path=None, delta_table=None, debug=False):
+    def run_type_2(self, spark, dataframe, key, current_flag, effective_date, end_date, delta_path=None, delta_table=None, debug=False):
 
-        delta_table = self._get_delta_table(spark, delta_path, delta_table)
+        if current_flag not in dataframe.columns:
+            dataframe = dataframe.withColumn(current_flag, lit(True))
 
-        df_update = dataframe.alias(self.DataFrameAlias.UPDATE)
+        if effective_date not in dataframe.columns:
+            dataframe = dataframe.withColumn(effective_date, lit(current_timestamp()))
 
-        mergeCondition = f"{self.DataFrameAlias.UPDATE}.{key} == {self.DataFrameAlias.DELTA}.{key}"
-        if debug: print("mergeCondition:", mergeCondition)
-
-        delta_table.alias(self.DataFrameAlias.DELTA).merge(source=df_update, condition=mergeCondition) \
-            .whenMatchedUpdateAll() \
-            .whenNotMatchedInsertAll() \
-            .execute()
-
-        return None
-
-    def run_type_2(self, spark, dataframe, key, delta_path=None, delta_table=None, current_flag=None,
-                   effective_date=None, end_date=None, debug=False):
-
-        if current_flag is None:
-            current_flag = self.current_flag
-
-        if effective_date is None:
-            effective_date = self.effective_date
-
-        if end_date is None:
-            end_date = self.end_date
+        if end_date not in dataframe.columns:
+            dataframe = dataframe.withColumn(end_date, lit(None).cast(TimestampType()))
 
         delta_table = self._get_delta_table(spark, delta_path, delta_table)
 
@@ -123,3 +106,19 @@ class DeltaSCD:
             delta_table = DeltaTable.forName(spark, delta_table)
 
         return delta_table
+
+    def run_type_1(self, spark, dataframe, key, delta_path=None, delta_table=None, debug=False):
+
+        delta_table = self._get_delta_table(spark, delta_path, delta_table)
+
+        df_update = dataframe.alias(self.DataFrameAlias.UPDATE)
+
+        mergeCondition = f"{self.DataFrameAlias.UPDATE}.{key} == {self.DataFrameAlias.DELTA}.{key}"
+        if debug: print("mergeCondition:", mergeCondition)
+
+        delta_table.alias(self.DataFrameAlias.DELTA).merge(source=df_update, condition=mergeCondition) \
+            .whenMatchedUpdateAll() \
+            .whenNotMatchedInsertAll() \
+            .execute()
+
+        return None
