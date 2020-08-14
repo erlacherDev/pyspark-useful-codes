@@ -3,10 +3,6 @@ from pyspark.sql.functions import lit, current_timestamp
 from pyspark.sql.types import TimestampType
 
 
-def apply_scd(spark, scd_type, dataframe, key, current_flag=None, effective_date=None, end_date=None, delta_path=None, delta_table=None, debug=False):
-  return DeltaSCD().run(spark, scd_type, dataframe, key, current_flag, effective_date, end_date, delta_path, delta_table, debug)
-
-
 class DeltaSCD:
 
     class DataFrameAlias:
@@ -16,11 +12,6 @@ class DeltaSCD:
 
     def run(self, spark, scd_type, dataframe, key, current_flag=None, effective_date=None, end_date=None, delta_path=None, delta_table=None, debug=False):
 
-        if not isinstance(scd_type, int):
-            raise TypeError(f"parametro scd_type precisa ser um inteiro. tipagem recebida: {type(scd_type)}")
-
-        if debug: print(f"Running SCD TYPE {str(scd_type)}")
-
         if scd_type == 1:
             self.run_type_1(spark, dataframe, key, delta_path, delta_table, debug)
 
@@ -29,6 +20,22 @@ class DeltaSCD:
 
         else:
             raise NotImplementedError(f"scd_type '{str(scd_type)}' nao implementado.")
+
+        return None
+
+    def run_type_1(self, spark, dataframe, key, delta_path=None, delta_table=None, debug=False):
+
+        delta_table = self._get_delta_table(spark, delta_path, delta_table)
+
+        df_update = dataframe.alias(self.DataFrameAlias.UPDATE)
+
+        mergeCondition = f"{self.DataFrameAlias.UPDATE}.{key} == {self.DataFrameAlias.DELTA}.{key}"
+        if debug: print("mergeCondition:", mergeCondition)
+
+        delta_table.alias(self.DataFrameAlias.DELTA).merge(source=df_update, condition=mergeCondition) \
+            .whenMatchedUpdateAll() \
+            .whenNotMatchedInsertAll() \
+            .execute()
 
         return None
 
@@ -109,19 +116,3 @@ class DeltaSCD:
             delta_table = DeltaTable.forName(spark, delta_table)
 
         return delta_table
-
-    def run_type_1(self, spark, dataframe, key, delta_path=None, delta_table=None, debug=False):
-
-        delta_table = self._get_delta_table(spark, delta_path, delta_table)
-
-        df_update = dataframe.alias(self.DataFrameAlias.UPDATE)
-
-        mergeCondition = f"{self.DataFrameAlias.UPDATE}.{key} == {self.DataFrameAlias.DELTA}.{key}"
-        if debug: print("mergeCondition:", mergeCondition)
-
-        delta_table.alias(self.DataFrameAlias.DELTA).merge(source=df_update, condition=mergeCondition) \
-            .whenMatchedUpdateAll() \
-            .whenNotMatchedInsertAll() \
-            .execute()
-
-        return None
