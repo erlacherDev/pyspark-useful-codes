@@ -34,6 +34,9 @@ class DeltaSCD:
 
     def run_type_2(self, spark, dataframe, key, current_flag, effective_date, end_date, delta_path=None, delta_table=None, debug=False):
 
+        if [current_flag, effective_date, end_date].count(None) > 0:
+            raise ValueError("Os parametros current_flag, effective_date, end_date devem ser todos preenchidos.")
+
         if current_flag not in dataframe.columns:
             dataframe = dataframe.withColumn(current_flag, lit(True))
 
@@ -50,10 +53,10 @@ class DeltaSCD:
         df_update = dataframe.alias(self.DataFrameAlias.UPDATE)
 
         no_keys = [column for column in dataframe.columns if column not in [key, current_flag, effective_date, end_date]]
-        if debug: print("no_keys:", no_keys)
+        if debug: print("\n no_keys:", no_keys)
 
-        no_keys_comparative = ' '.join([f" AND {self.DataFrameAlias.DELTA}.{x} <> {self.DataFrameAlias.UPDATE}.{x}" for x in no_keys])
-        if debug: print('no_keys_comparative:', no_keys_comparative)
+        no_keys_comparative = "AND (" + ' OR '.join([f"{self.DataFrameAlias.DELTA}.{x} <> {self.DataFrameAlias.UPDATE}.{x}" for x in no_keys]) + ")"
+        if debug: print('\n no_keys_comparative:', no_keys_comparative)
 
         newRecordsOfExistingKeysCondition = f"{self.DataFrameAlias.DELTA}.{current_flag} = true {no_keys_comparative}"
         if debug: print(newRecordsOfExistingKeysCondition)
@@ -68,23 +71,23 @@ class DeltaSCD:
         # Stage the update by unioning two sets of rows
         stagedUpdates = rows1.unionByName(rows2).alias(self.DataFrameAlias.STAGED_UPDATE)
 
-        no_keys_staged_comparative = ' '.join(
-            [f" AND {self.DataFrameAlias.DELTA}.{x} <> {self.DataFrameAlias.STAGED_UPDATE}.{x}" for x in no_keys])
-        if debug: print('no_keys_staged_comparative:', no_keys_staged_comparative)
+        no_keys_staged_comparative = "AND (" + ' OR '.join(
+            [f"{self.DataFrameAlias.DELTA}.{x} <> {self.DataFrameAlias.STAGED_UPDATE}.{x}" for x in no_keys]) + ")"
+        if debug: print('\n no_keys_staged_comparative:', no_keys_staged_comparative)
 
         whenMatchedUpdateCondition = f"{self.DataFrameAlias.DELTA}.{current_flag} = true {no_keys_staged_comparative}"
-        if debug: print('whenMatchedUpdateCondition:', whenMatchedUpdateCondition)
+        if debug: print('\n whenMatchedUpdateCondition:', whenMatchedUpdateCondition)
 
         whenMatchedUpdateSet = {current_flag: "false", end_date: f"{self.DataFrameAlias.STAGED_UPDATE}.{effective_date}"}
-        if debug: print('whenMatchedUpdateSet:', whenMatchedUpdateSet)
+        if debug: print('\n whenMatchedUpdateSet:', whenMatchedUpdateSet)
 
         mergeCondition = f"{self.DataFrameAlias.DELTA}.{key} = mergeKey"
-        if debug: print("mergeCondition:", mergeCondition)
+        if debug: print("\n mergeCondition:", mergeCondition)
 
         whenNotMatchedInsertValues = {x: f"{self.DataFrameAlias.STAGED_UPDATE}.{x}" for x in no_keys}
         whenNotMatchedInsertValues.update({key: f"{self.DataFrameAlias.STAGED_UPDATE}.{key}", current_flag: "true",
                                            effective_date: f"{self.DataFrameAlias.STAGED_UPDATE}.{effective_date}"})
-        if debug: print("whenNotMatchedInsertValues:", whenNotMatchedInsertValues)
+        if debug: print("\n whenNotMatchedInsertValues:", whenNotMatchedInsertValues)
 
         delta_table.alias(self.DataFrameAlias.DELTA).merge(source=stagedUpdates, condition=mergeCondition) \
             .whenMatchedUpdate(condition=whenMatchedUpdateCondition, set=whenMatchedUpdateSet) \
